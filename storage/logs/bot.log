@@ -1,0 +1,4 @@
+{"time":"2026-03-13T22:03:00.491Z","level":"INFO","message":"DOWNLOAD_VIDEO_SUCCESS","data":"C:\\Users\\LENOVO\\Documents\\reszz bot downloader\\storage\\temp\\nG1ZKK-PheA.mp4"}
+{"time":"2026-03-13T22:03:00.492Z","level":"INFO","message":"WORKER_VIDEO_SUCCESS","data":{"file":"C:\\Users\\LENOVO\\Documents\\reszz bot downloader\\storage\\temp\\nG1ZKK-PheA.mp4"}}
+{"time":"2026-03-13T22:03:00.493Z","level":"INFO","message":"WORKER_VIDEO_SUCCESS","data":{"file":"C:\\Users\\LENOVO\\Documents\\reszz bot downloader\\storage\\temp\\nG1ZKK-PheA.mp4"}}
+{"time":"2026-03-13T22:03:03.863Z","level":"ERROR","message":"DOWNLOAD_ERROR","data":{}}
