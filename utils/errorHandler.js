@@ -10,8 +10,8 @@ function register() {
     process.on("uncaughtException", (error) => {
 
         logger.error("UNCAUGHT_EXCEPTION", {
-            message: error.message,
-            stack: error.stack
+            message: error?.message,
+            stack: error?.stack
         })
 
     })
@@ -27,9 +27,9 @@ function register() {
     process.on("warning", (warning) => {
 
         logger.warn("NODE_WARNING", {
-            name: warning.name,
-            message: warning.message,
-            stack: warning.stack
+            name: warning?.name,
+            message: warning?.message,
+            stack: warning?.stack
         })
 
     })
