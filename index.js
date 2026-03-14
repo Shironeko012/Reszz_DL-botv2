@@ -159,7 +159,7 @@ if(qr){
 
 console.log("\n📱 Scan QR Below:\n")
 
-qrcode.generate(qr,{ small:true })
+qrcode.generate(qr,{ small:false })
 
 }
 
