@@ -1,11 +1,26 @@
 /**
  * WhatsApp Downloader Bot
- * Stable Production Entry (Upgraded)
+ * Optimized Entry (Railway Stable)
  */
 
-// FIX crypto for Baileys
+const fs = require("fs")
+const path = require("path")
+const http = require("http")
+
+/*
+=========================
+CRYPTO FIX FOR BAILEYS
+=========================
+*/
+
 const crypto = require("crypto")
 if (!global.crypto) global.crypto = crypto.webcrypto
+
+/*
+=========================
+BAILEYS
+=========================
+*/
 
 const {
 default: makeWASocket,
@@ -18,7 +33,9 @@ const pino = require("pino")
 const qrcode = require("qrcode-terminal")
 
 /*
+=========================
 SYSTEM IMPORT
+=========================
 */
 
 const messageHandler = require("./handlers/messageHandler")
@@ -29,8 +46,69 @@ const logger = require("./utils/logger")
 const errorHandler = require("./utils/errorHandler")
 const fileManager = require("./utils/fileManager")
 
+/*
+=========================
+GLOBAL STATE
+=========================
+*/
+
 let sock = null
 let reconnecting = false
+let schedulerStarted = false
+
+/*
+=========================
+ENSURE DIRECTORIES
+=========================
+*/
+
+function ensureDirectories(){
+
+const dirs = [
+"./session",
+"./storage/temp",
+"./storage/cache",
+"./storage/logs"
+]
+
+for(const dir of dirs){
+
+try{
+
+fs.mkdirSync(dir,{ recursive:true })
+
+}catch(e){
+
+console.error("DIR_CREATE_ERROR",dir,e)
+
+}
+
+}
+
+}
+
+/*
+=========================
+HEALTH SERVER (RAILWAY)
+=========================
+*/
+
+function startHealthServer(){
+
+const PORT = process.env.PORT || 3000
+
+http.createServer((req,res)=>{
+
+res.writeHead(200,{"Content-Type":"text/plain"})
+res.end("Bot is running")
+
+}).listen(PORT,()=>{
+
+console.log("🌐 Health server running on port",PORT)
+
+})
+
+}
 
 /*
 =========================
@@ -40,9 +118,11 @@ SYSTEM SCHEDULERS
 
 function startSchedulers(){
 
+if(schedulerStarted) return
+schedulerStarted = true
+
 /*
 TEMP FILE CLEANER
-remove old files every 30 minutes
 */
 
 setInterval(()=>{
@@ -60,10 +140,12 @@ logger.error("TEMP_CLEANUP_ERROR",e)
 },30 * 60 * 1000)
 
 /*
-MEMORY PROTECTION
+MEMORY MONITOR
 */
 
 setInterval(()=>{
+
+try{
 
 const memory = process.memoryUsage()
 
@@ -73,6 +155,12 @@ rss: Math.round(memory.rss / 1024 / 1024) + "MB",
 heap: Math.round(memory.heapUsed / 1024 / 1024) + "MB"
 
 })
+
+}catch(e){
+
+logger.error("MEMORY_MONITOR_ERROR",e)
+
+}
 
 },10 * 60 * 1000)
 
@@ -90,7 +178,7 @@ try{
 
 if(reconnecting){
 
-console.log("⚠️ Reconnect already in progress...")
+console.log("⚠️ Reconnect already in progress")
 return
 
 }
@@ -158,8 +246,7 @@ const { connection, lastDisconnect, qr } = update
 if(qr){
 
 console.log("\n📱 Scan QR Below:\n")
-
-qrcode.generate(qr,{ small:false })
+qrcode.generate(qr,{ small:true })
 
 }
 
@@ -275,26 +362,37 @@ GRACEFUL SHUTDOWN
 =========================
 */
 
-process.on("SIGINT",()=>{
+function shutdown(signal){
 
-console.log("\n🛑 Shutting down bot...")
+console.log(`\n🛑 ${signal} received. Shutting down bot...`)
+
+try{
+
+if(sock){
+
+sock.end()
+
+}
+
+}catch(e){
+
+console.error("SOCKET_CLOSE_ERROR",e)
+
+}
 
 process.exit()
 
-})
+}
 
-process.on("SIGTERM",()=>{
-
-console.log("\n🛑 Terminating bot...")
-
-process.exit()
-
-})
+process.on("SIGINT",()=>shutdown("SIGINT"))
+process.on("SIGTERM",()=>shutdown("SIGTERM"))
 
 /*
 =========================
-RUN BOT
+BOOTSTRAP
 =========================
 */
 
+ensureDirectories()
+startHealthServer()
 startBot()
