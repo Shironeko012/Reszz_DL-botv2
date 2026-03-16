@@ -243,10 +243,17 @@ sock.ev.on("connection.update", async(update)=>{
 
 const { connection, lastDisconnect, qr } = update
 
-if(qr){
+if (qr) {
 
-console.log("\n📱 Scan QR Below:\n")
-qrcode.generate(qr,{ small:false })
+console.log("\nScan QR WhatsApp:\n")
+
+qrcode.generate(qr, { small: true })
+
+const qrUrl =
+"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(qr)
+
+console.log("\nQR LINK:")
+console.log(qrUrl)
 
 }
 
