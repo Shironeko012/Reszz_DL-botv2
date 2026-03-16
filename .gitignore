@@ -1,21 +1,14 @@
-# Node modules
 node_modules/
 
-# Session WhatsApp
 session/
 
-# Temp downloads
 storage/temp/
-
-# Logs
+storage/cache/
 storage/logs/
 
-# OS files
+.env
+
 .DS_Store
 Thumbs.db
 
-# Environment
-.env
-
-# Railway build cache
 .nixpacks
