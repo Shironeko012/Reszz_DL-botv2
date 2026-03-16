@@ -1,4 +1,7 @@
+const logger = require("../utils/logger")
+
 const LIMIT = 5000
+const MAX_USERS = 2000
 
 const users = new Map()
 
@@ -31,7 +34,7 @@ AUTO CLEANUP
 prevent memory leak
 */
 
-setInterval(()=>{
+function cleanup(){
 
 const now = Date.now()
 
@@ -43,7 +46,32 @@ users.delete(user)
 
 }
 
-}, 60 * 1000)
+/*
+Hard limit protection
+*/
+
+if(users.size > MAX_USERS){
+
+const keys = users.keys()
+
+for(let i=0;i<200;i++){
+
+const k = keys.next().value
+if(!k) break
+
+users.delete(k)
+
+}
+
+}
+
+logger.info("RATE_LIMITER_CLEANUP",{
+size:users.size
+})
+
+}
+
+setInterval(cleanup,60 * 1000)
 
 module.exports = {
 check
