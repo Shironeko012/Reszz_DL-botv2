@@ -1,40 +1,78 @@
-const { exec } = require("child_process")
+const { spawn } = require("child_process")
 const logger = require("./logger")
 
-const MAX_BUFFER = 1024 * 1024 * 50
+const MAX_RUNTIME = 5 * 60 * 1000 // 5 menit default
 
-function run(command,options={}){
+function run(command, options = {}) {
 
-return new Promise((resolve,reject)=>{
+return new Promise((resolve, reject) => {
 
-const child = exec(command,{
-maxBuffer:MAX_BUFFER,
-timeout:options.timeout || 0
-},(error,stdout,stderr)=>{
+const timeout = options.timeout || MAX_RUNTIME
 
-if(error){
+/*
+Split command safely
+*/
+const parts = command.split(" ")
+const cmd = parts.shift()
 
-logger.error("EXEC_ERROR",{
-command,
-error:error.message
+const child = spawn(cmd, parts, {
+shell: false,
+stdio: ["ignore","pipe","pipe"]
 })
 
-return reject(error)
+let stdout = ""
+let stderr = ""
+
+const timer = setTimeout(() => {
+
+logger.error("EXEC_TIMEOUT", { command })
+
+try{
+child.kill("SIGKILL")
+}catch(e){}
+
+reject(new Error("Process timeout"))
+
+}, timeout)
+
+child.stdout.on("data", data => {
+stdout += data.toString()
+})
+
+child.stderr.on("data", data => {
+stderr += data.toString()
+})
+
+child.on("error", err => {
+
+clearTimeout(timer)
+
+logger.error("EXEC_PROCESS_ERROR", {
+command,
+error: err.message
+})
+
+reject(err)
+
+})
+
+child.on("close", code => {
+
+clearTimeout(timer)
+
+if(code !== 0){
+
+logger.error("EXEC_EXIT_ERROR", {
+command,
+code,
+stderr: stderr.slice(0,500)
+})
+
+return reject(new Error(`Process exited with code ${code}`))
 
 }
 
 resolve(stdout)
-
-})
-
-child.on("error",err=>{
-
-logger.error("EXEC_PROCESS_ERROR",{
-command,
-error:err.message
-})
-
-reject(err)
 
 })
 
