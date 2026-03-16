@@ -2,17 +2,33 @@ const logger = require("./logger")
 
 class Queue {
 
-constructor(concurrency = 3){
+constructor(concurrency = 2, maxQueue = 50){
 
 this.concurrency = concurrency
+this.maxQueue = maxQueue
+
 this.running = 0
 this.tasks = []
 
 }
 
+/*
+Push new task
+*/
+
 push(task){
 
 return new Promise((resolve,reject)=>{
+
+if(this.tasks.length >= this.maxQueue){
+
+logger.warn("QUEUE_FULL",{
+queue:this.tasks.length
+})
+
+return reject(new Error("Queue full"))
+
+}
 
 this.tasks.push({task,resolve,reject})
 
@@ -22,11 +38,17 @@ process.nextTick(()=>this.next())
 
 }
 
+/*
+Execute next tasks
+*/
+
 async next(){
 
-while(this.running < this.concurrency && this.tasks.length > 0){
+if(this.running >= this.concurrency) return
 
 const item = this.tasks.shift()
+
+if(!item) return
 
 this.running++
 
@@ -46,7 +68,10 @@ item.reject(err)
 
 this.running--
 
-}
+/*
+Run next job
+*/
+process.nextTick(()=>this.next())
 
 }
 
@@ -54,6 +79,6 @@ this.running--
 
 }
 
-const defaultQueue = new Queue(3)
+const defaultQueue = new Queue(2,50)
 
 module.exports = defaultQueue
