@@ -1,13 +1,13 @@
 /**
- * Command Handler
+ * Command Handler (Optimized)
  * Route commands to corresponding modules
  */
 
 const logger = require("../utils/logger")
 
 const commands = {
-    dl: require("../commands/download"),
-    mp3: require("../commands/mp3")
+dl: require("../commands/download"),
+mp3: require("../commands/mp3")
 }
 
 const PREFIX = "."
@@ -15,65 +15,134 @@ const PREFIX = "."
 /*
 Prevent duplicate command execution
 */
-const activeCommands = new Set()
+const activeCommands = new Map()
 
-async function handle(sock, m, text) {
+const COMMAND_TTL = 15000
+const MAX_ACTIVE = 1000
 
-    try {
+function cleanupCommands(){
 
-        if (!text || !text.startsWith(PREFIX)) return false
+const now = Date.now()
 
-        const messageId = m?.key?.id
+for(const [id,time] of activeCommands){
 
-        /*
-        Prevent duplicate execution
-        */
-        if (messageId) {
+if(now - time > COMMAND_TTL){
+activeCommands.delete(id)
+}
 
-            if (activeCommands.has(messageId)) {
-                return true
-            }
+}
 
-            activeCommands.add(messageId)
+if(activeCommands.size > MAX_ACTIVE){
 
-            // auto cleanup
-            setTimeout(() => {
-                activeCommands.delete(messageId)
-            }, 15000)
-        }
+const keys = activeCommands.keys()
 
-        const args = text.slice(PREFIX.length).trim().split(/\s+/)
-        const command = args.shift()?.toLowerCase()
+for(let i=0;i<200;i++){
 
-        const handler = commands[command]
+const k = keys.next().value
+if(!k) break
 
-        if (!handler) {
-            if (messageId) activeCommands.delete(messageId)
-            return false
-        }
+activeCommands.delete(k)
 
-        logger.info("COMMAND_EXECUTE", {
-            command,
-            user: m.key.participant || m.key.remoteJid
-        })
+}
 
-        await handler(sock, m, args)
+}
 
-        if (messageId) activeCommands.delete(messageId)
+}
 
-        return true
+async function handle(sock,m,text){
 
-    } catch (error) {
+try{
 
-        logger.error("COMMAND_HANDLER_ERROR", {
-            error: error?.message || error
-        })
+if(!text) return false
 
-        return true
-    }
+/*
+quick prefix check
+*/
+if(text[0] !== PREFIX) return false
+
+/*
+limit command length
+*/
+if(text.length > 500) return false
+
+const messageId = m?.key?.id
+
+/*
+Prevent duplicate execution
+*/
+
+if(messageId){
+
+if(activeCommands.has(messageId)){
+return true
+}
+
+activeCommands.set(messageId,Date.now())
+
+}
+
+cleanupCommands()
+
+/*
+Parse command
+*/
+
+const body = text.slice(1).trim()
+
+if(!body) return false
+
+const spaceIndex = body.indexOf(" ")
+
+let command
+let args
+
+if(spaceIndex === -1){
+
+command = body.toLowerCase()
+args = []
+
+}else{
+
+command = body.slice(0,spaceIndex).toLowerCase()
+args = body.slice(spaceIndex+1).trim().split(/\s+/)
+
+}
+
+const handler = commands[command]
+
+if(!handler){
+
+if(messageId) activeCommands.delete(messageId)
+
+return false
+
+}
+
+logger.info("COMMAND_EXECUTE",{
+command,
+user:m.key.participant || m.key.remoteJid
+})
+
+await handler(sock,m,args)
+
+if(messageId){
+activeCommands.delete(messageId)
+}
+
+return true
+
+}catch(error){
+
+logger.error("COMMAND_HANDLER_ERROR",{
+error:error?.message || error
+})
+
+return true
+
+}
 
 }
 
 module.exports = {
-    handle
+handle
 }
