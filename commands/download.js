@@ -1,6 +1,8 @@
 /**
- * Video Downloader Command
+ * Video Downloader Command (Optimized)
  */
+
+const fs = require("fs")
 
 const validator = require("../utils/validator")
 const logger = require("../utils/logger")
@@ -15,6 +17,11 @@ const linkConverter = require("../lib/linkConverter")
 Prevent duplicate downloads
 */
 const activeDownloads = new Map()
+
+/*
+Download timeout (ms)
+*/
+const DOWNLOAD_TIMEOUT = 120000
 
 module.exports = async function downloadCommand(sock,m,args){
 
@@ -33,7 +40,12 @@ return
 }
 
 const rawUrl = args[0]
-const url = linkConverter.normalize(rawUrl)
+
+let url = linkConverter.normalize(rawUrl)
+
+if(!url) url = rawUrl
+
+url = url.trim()
 
 if(!validator.isURL(url)){
 
@@ -43,6 +55,10 @@ text:"❌ Link tidak valid."
 
 return
 }
+
+/*
+Rate limit
+*/
 
 const allowed = rateLimiter.check(sender)
 
@@ -56,12 +72,14 @@ return
 }
 
 /*
-Check cache
+Cache check
 */
+
+try{
 
 const cached = await cacheSystem.get(url)
 
-if(cached){
+if(cached && fs.existsSync(cached)){
 
 const sent = await sock.sendMessage(chat,{
 video:{url:cached},
@@ -74,15 +92,25 @@ if(sent) selfDestruct.schedule(sock,chat,sent.key)
 return
 }
 
+}catch(e){
+
+logger.warn("CACHE_READ_FAILED",e)
+
+}
+
 /*
-Prevent duplicate download
+Duplicate download guard
 */
 
 if(activeDownloads.has(url)){
 
 logger.info("DOWNLOAD_ALREADY_RUNNING",{url})
 
+try{
+
 const result = await activeDownloads.get(url)
+
+if(!result?.file) throw new Error("Invalid result")
 
 const caption = formatter.video(result.metadata)
 
@@ -94,8 +122,18 @@ caption
 
 if(sent) selfDestruct.schedule(sock,chat,sent.key)
 
+}catch(e){
+
+logger.error("DUPLICATE_DOWNLOAD_ERROR",e)
+
+}
+
 return
 }
+
+/*
+Notify user
+*/
 
 await sock.sendMessage(chat,{
 text:"📥 Mengunduh video..."
@@ -105,7 +143,22 @@ text:"📥 Mengunduh video..."
 Run worker
 */
 
-const job = workerPool.download(url)
+let job
+
+try{
+
+job = workerPool.download(url)
+
+}catch(err){
+
+logger.error("WORKERPOOL_CREATE_ERROR",err)
+
+await sock.sendMessage(chat,{
+text:"❌ Sistem download sedang bermasalah."
+},{quoted:m})
+
+return
+}
 
 activeDownloads.set(url,job)
 
@@ -113,7 +166,17 @@ let result
 
 try{
 
-result = await job
+result = await Promise.race([
+
+job,
+
+new Promise((_,reject)=>
+setTimeout(()=>{
+reject(new Error("Download timeout"))
+},DOWNLOAD_TIMEOUT)
+)
+
+])
 
 }finally{
 
@@ -121,9 +184,25 @@ activeDownloads.delete(url)
 
 }
 
+/*
+Validate result
+*/
+
 if(!result || !result.file){
+
 throw new Error("Download result invalid")
+
 }
+
+if(!fs.existsSync(result.file)){
+
+throw new Error("Downloaded file missing")
+
+}
+
+/*
+Send result
+*/
 
 const caption = formatter.video(result.metadata)
 
@@ -133,11 +212,25 @@ mimetype:"video/mp4",
 caption
 },{quoted:m}).catch(()=>null)
 
-try{
-await cacheSystem.set(url,result.file)
-}catch(e){}
+/*
+Cache save
+*/
 
-if(sent) selfDestruct.schedule(sock,chat,sent.key)
+try{
+
+await cacheSystem.set(url,result.file)
+
+}catch(e){
+
+logger.warn("CACHE_WRITE_FAILED",e)
+
+}
+
+if(sent){
+
+selfDestruct.schedule(sock,chat,sent.key)
+
+}
 
 }catch(err){
 
@@ -147,7 +240,7 @@ error:err?.message || err
 
 await sock.sendMessage(chat,{
 text:"❌ Terjadi kesalahan saat download."
-},{quoted:m})
+},{quoted:m}).catch(()=>null)
 
 }
 
