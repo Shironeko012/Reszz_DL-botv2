@@ -9,34 +9,34 @@ async function detectEngine(){
 if(engine) return engine
 
 try{
+
 await exec("yt-dlp --version",{timeout:5000})
+
 engine = "ytdlp"
-logger.info("YT_DLP_ENGINE",{engine:"yt-dlp"})
+
+logger.info("YT_DLP_ENGINE",{engine:"yt-dlp binary"})
+
 return engine
+
 }catch(e){}
 
-try{
-await exec("python -m yt_dlp --version",{timeout:5000})
-engine = "python"
-logger.info("YT_DLP_ENGINE",{engine:"python yt_dlp"})
-return engine
-}catch(e){}
+/*
+Fallback to node package
+*/
 
 engine = "node"
-logger.warn("YT_DLP_ENGINE",{engine:"yt-dlp-exec"})
+
+logger.warn("YT_DLP_ENGINE",{engine:"yt-dlp-exec fallback"})
+
 return engine
 
 }
 
-async function run(args, timeout = 120000){
+async function run(args,timeout=120000){
 
 const detected = await detectEngine()
 
 try{
-
-/*
-Use system yt-dlp
-*/
 
 if(detected === "ytdlp"){
 
@@ -46,32 +46,18 @@ return await exec(command,{timeout})
 
 }
 
-/*
-Use python module
-*/
-
-if(detected === "python"){
-
-const command = `python -m yt_dlp ${args.join(" ")}`
-
-return await exec(command,{timeout})
-
-}
-
-/*
-Node fallback (yt-dlp-exec)
-*/
-
 if(detected === "node"){
+
+/*
+yt-dlp-exec only needs URL
+*/
 
 const url = args[args.length-1].replace(/"/g,"")
 
-const options = {
+return await ytdlpExec(url,{
 noWarnings:true,
 preferFreeFormats:true
-}
-
-return await ytdlpExec(url,options)
+})
 
 }
 
