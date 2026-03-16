@@ -1,5 +1,5 @@
 /**
- * Message Handler
+ * Message Handler (Optimized)
  * Process incoming messages and route actions
  */
 
@@ -15,6 +15,8 @@ const processedMessages = new Map()
 const MESSAGE_CACHE_TTL = 30000
 const MAX_CACHE = 1000
 
+let lastCleanup = 0
+
 function extractText(message){
 
 return (
@@ -23,6 +25,8 @@ message?.extendedTextMessage?.text ||
 message?.imageMessage?.caption ||
 message?.videoMessage?.caption ||
 message?.documentMessage?.caption ||
+message?.buttonsResponseMessage?.selectedButtonId ||
+message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
 message?.ephemeralMessage?.message?.extendedTextMessage?.text ||
 ""
 )
@@ -33,6 +37,13 @@ function cleanupCache(){
 
 const now = Date.now()
 
+/*
+cleanup only every 10 seconds
+*/
+if(now - lastCleanup < 10000) return
+
+lastCleanup = now
+
 for(const [id,time] of processedMessages){
 
 if(now - time > MESSAGE_CACHE_TTL){
@@ -41,11 +52,22 @@ processedMessages.delete(id)
 
 }
 
+/*
+hard limit protection
+*/
 if(processedMessages.size > MAX_CACHE){
 
-const keys = [...processedMessages.keys()].slice(0,200)
+const keys = processedMessages.keys()
 
-keys.forEach(k=>processedMessages.delete(k))
+for(let i=0;i<200;i++){
+
+const k = keys.next().value
+
+if(!k) break
+
+processedMessages.delete(k)
+
+}
 
 }
 
@@ -79,13 +101,15 @@ processedMessages.set(messageId,Date.now())
 
 }
 
+/*
+cleanup cache periodically
+*/
+
 cleanupCache()
 
 const text = extractText(message)
 
 if(!text) return
-
-console.log("📩 MESSAGE:", text)
 
 /*
 Try command first
@@ -112,6 +136,6 @@ error:error?.message || error
 
 }
 
-module.exports={
+module.exports = {
 handle
 }
