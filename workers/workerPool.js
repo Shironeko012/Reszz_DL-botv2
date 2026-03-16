@@ -1,6 +1,6 @@
 /**
  * Worker Pool
- * Execute workers using global queue
+ * Execute workers using global queue (Optimized)
  */
 
 const logger = require("../utils/logger")
@@ -12,67 +12,150 @@ Prevent duplicate downloads
 */
 const runningJobs = new Map()
 
-async function download(url){
+/*
+Worker timeout
+*/
+const WORKER_TIMEOUT = 180000
 
-    if(runningJobs.has(url)){
-        return runningJobs.get(url)
-    }
+function withTimeout(promise, timeout){
 
-    const job = queue.push(async()=>{
+return Promise.race([
 
-        const result = await downloadWorker.downloadVideo(url)
+promise,
 
-        if(!result || !result.file){
-            throw new Error("Worker returned invalid result")
-        }
+new Promise((_,reject)=>
+setTimeout(()=>{
+reject(new Error("Worker timeout"))
+},timeout)
+)
 
-        return result
-    })
-
-    runningJobs.set(url, job)
-
-    try{
-        return await job
-    }finally{
-        runningJobs.delete(url)
-    }
+])
 
 }
 
 /*
-MP3 download
+VIDEO DOWNLOAD
+*/
+
+async function download(url){
+
+if(runningJobs.has(url)){
+return runningJobs.get(url)
+}
+
+const job = queue.push(async()=>{
+
+try{
+
+logger.info("WORKER_START",{url})
+
+const result = await withTimeout(
+downloadWorker.downloadVideo(url),
+WORKER_TIMEOUT
+)
+
+if(!result || !result.file){
+throw new Error("Worker returned invalid result")
+}
+
+return result
+
+}catch(err){
+
+logger.error("WORKER_DOWNLOAD_ERROR",{
+url,
+error:err?.message || err
+})
+
+throw err
+
+}
+
+})
+
+runningJobs.set(url, job)
+
+try{
+
+return await job
+
+}catch(err){
+
+throw err
+
+}finally{
+
+runningJobs.delete(url)
+
+logger.info("WORKER_FINISH",{url})
+
+}
+
+}
+
+/*
+MP3 DOWNLOAD
 */
 
 async function downloadMP3(url){
 
-    const key = "mp3:"+url
+const key = "mp3:"+url
 
-    if(runningJobs.has(key)){
-        return runningJobs.get(key)
-    }
+if(runningJobs.has(key)){
+return runningJobs.get(key)
+}
 
-    const job = queue.push(async()=>{
+const job = queue.push(async()=>{
 
-        const result = await downloadWorker.downloadMP3(url)
+try{
 
-        if(!result || !result.file){
-            throw new Error("Worker returned invalid result")
-        }
+logger.info("WORKER_MP3_START",{url})
 
-        return result
-    })
+const result = await withTimeout(
+downloadWorker.downloadMP3(url),
+WORKER_TIMEOUT
+)
 
-    runningJobs.set(key, job)
+if(!result || !result.file){
+throw new Error("Worker returned invalid result")
+}
 
-    try{
-        return await job
-    }finally{
-        runningJobs.delete(key)
-    }
+return result
+
+}catch(err){
+
+logger.error("WORKER_MP3_ERROR",{
+url,
+error:err?.message || err
+})
+
+throw err
+
+}
+
+})
+
+runningJobs.set(key, job)
+
+try{
+
+return await job
+
+}catch(err){
+
+throw err
+
+}finally{
+
+runningJobs.delete(key)
+
+logger.info("WORKER_MP3_FINISH",{url})
+
+}
 
 }
 
 module.exports = {
-    download,
-    downloadMP3
+download,
+downloadMP3
 }
