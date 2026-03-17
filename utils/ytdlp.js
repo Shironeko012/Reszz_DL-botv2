@@ -18,7 +18,10 @@ logger.info("YT_DLP_ENGINE",{engine:"yt-dlp binary"})
 
 return engine
 
-}catch(e){}
+}catch(e){
+
+// silent fail
+}
 
 /*
 Fallback to node package
@@ -34,9 +37,17 @@ return engine
 
 async function run(args,timeout=120000){
 
+if(!Array.isArray(args) || args.length === 0){
+throw new Error("Invalid ytdlp args")
+}
+
 const detected = await detectEngine()
 
 try{
+
+/*
+Use system yt-dlp
+*/
 
 if(detected === "ytdlp"){
 
@@ -46,13 +57,19 @@ return await exec(command,{timeout})
 
 }
 
-if(detected === "node"){
-
 /*
-yt-dlp-exec only needs URL
+Node fallback (yt-dlp-exec)
 */
 
-const url = args[args.length-1].replace(/"/g,"")
+if(detected === "node"){
+
+const lastArg = args[args.length-1]
+
+if(!lastArg){
+throw new Error("URL not found in args")
+}
+
+const url = String(lastArg).replace(/"/g,"")
 
 return await ytdlpExec(url,{
 noWarnings:true,
