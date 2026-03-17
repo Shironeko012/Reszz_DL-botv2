@@ -1,11 +1,8 @@
 [phases.setup]
-nixPkgs = ["python311", "ffmpeg", "aria2"]
+nixPkgs = ["nodejs_20", "python311", "ffmpeg", "aria2"]
 
 [phases.install]
-cmds = [
-"npm install",
-"pip install -U yt-dlp"
-]
+cmds = ["npm install"]
 
 [start]
 cmd = "node index.js"
