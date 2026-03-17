@@ -18,16 +18,14 @@ if (!global.crypto) global.crypto = crypto.webcrypto
 
 /*
 =========================
-BAILEYS
+BAILEYS (ESM FIX)
 =========================
 */
 
-const {
-default: makeWASocket,
-useMultiFileAuthState,
-fetchLatestBaileysVersion,
-DisconnectReason
-} = require("@whiskeysockets/baileys")
+let makeWASocket
+let useMultiFileAuthState
+let fetchLatestBaileysVersion
+let DisconnectReason
 
 const pino = require("pino")
 const qrcode = require("qrcode-terminal")
@@ -74,13 +72,9 @@ const dirs = [
 for(const dir of dirs){
 
 try{
-
 fs.mkdirSync(dir,{ recursive:true })
-
 }catch(e){
-
 console.error("DIR_CREATE_ERROR",dir,e)
-
 }
 
 }
@@ -98,14 +92,10 @@ function startHealthServer(){
 const PORT = process.env.PORT || 3000
 
 http.createServer((req,res)=>{
-
 res.writeHead(200,{"Content-Type":"text/plain"})
 res.end("Bot is running")
-
 }).listen(PORT,()=>{
-
 console.log("🌐 Health server running on port",PORT)
-
 })
 
 }
@@ -121,27 +111,15 @@ function startSchedulers(){
 if(schedulerStarted) return
 schedulerStarted = true
 
-/*
-TEMP FILE CLEANER
-*/
-
 setInterval(()=>{
 
 try{
-
 fileManager.cleanupTemp(60 * 60 * 1000)
-
 }catch(e){
-
 logger.error("TEMP_CLEANUP_ERROR",e)
-
 }
 
 },30 * 60 * 1000)
-
-/*
-MEMORY MONITOR
-*/
 
 setInterval(()=>{
 
@@ -150,16 +128,12 @@ try{
 const memory = process.memoryUsage()
 
 logger.info("MEMORY_USAGE",{
-
 rss: Math.round(memory.rss / 1024 / 1024) + "MB",
 heap: Math.round(memory.heapUsed / 1024 / 1024) + "MB"
-
 })
 
 }catch(e){
-
 logger.error("MEMORY_MONITOR_ERROR",e)
-
 }
 
 },10 * 60 * 1000)
@@ -177,15 +151,32 @@ async function startBot(){
 try{
 
 if(reconnecting){
-
 console.log("⚠️ Reconnect already in progress")
 return
-
 }
 
 reconnecting = true
 
 console.log("🚀 BOT STARTING...")
+
+/*
+=========================
+LOAD BAILEYS (ESM FIX)
+=========================
+*/
+
+if (!makeWASocket) {
+
+const baileys = await import("@whiskeysockets/baileys")
+
+makeWASocket = baileys.default
+useMultiFileAuthState = baileys.useMultiFileAuthState
+fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion
+DisconnectReason = baileys.DisconnectReason
+
+console.log("✅ Baileys loaded (ESM)")
+
+}
 
 /*
 REGISTER SYSTEMS
@@ -194,7 +185,6 @@ REGISTER SYSTEMS
 errorHandler.register()
 antiCrash.register()
 
-// optional redis
 // await redisCache.connect()
 
 /*
@@ -215,11 +205,8 @@ sock = makeWASocket({
 
 version,
 auth: state,
-
 logger: pino({ level: "silent" }),
-
 browser: ["ReszzDownloader","Chrome","1.0"],
-
 syncFullHistory: false,
 markOnlineOnConnect: true
 
@@ -228,10 +215,6 @@ markOnlineOnConnect: true
 console.log("📡 SOCKET CREATED")
 
 reconnecting = false
-
-/*
-SAVE SESSION
-*/
 
 sock.ev.on("creds.update", saveCreds)
 
@@ -246,7 +229,6 @@ const { connection, lastDisconnect, qr } = update
 if (qr) {
 
 console.log("\nScan QR WhatsApp:\n")
-
 qrcode.generate(qr, { small: true })
 
 const qrUrl =
@@ -258,15 +240,11 @@ console.log(qrUrl)
 }
 
 if(connection === "connecting"){
-
 console.log("🔄 Connecting to WhatsApp...")
-
 }
 
 if(connection === "open"){
-
 console.log("✅ BOT CONNECTED")
-
 }
 
 if(connection === "close"){
@@ -276,27 +254,15 @@ lastDisconnect?.error?.output?.statusCode
 
 console.log("❌ Connection closed:", reason)
 
-/*
-LOGOUT
-*/
-
 if(reason === DisconnectReason.loggedOut){
-
 console.log("⚠️ Session logged out. Delete session folder.")
 return
-
 }
-
-/*
-RECONNECT
-*/
 
 console.log("♻️ Reconnecting in 6 seconds...")
 
 setTimeout(()=>{
-
 startBot()
-
 },6000)
 
 }
@@ -304,9 +270,7 @@ startBot()
 })
 
 /*
-=========================
 MESSAGE ROUTER
-=========================
 */
 
 sock.ev.on("messages.upsert", async({ messages, type })=>{
@@ -316,16 +280,8 @@ try{
 if(type !== "notify") return
 
 const m = messages?.[0]
-
-if(!m) return
-if(!m.message) return
-
+if(!m || !m.message) return
 if(m.key?.remoteJid === "status@broadcast") return
-
-/*
-ignore bot message
-*/
-
 if(m.key?.fromMe) return
 
 await messageHandler.handle(sock,m)
@@ -345,10 +301,6 @@ logger.error("MESSAGE_HANDLER_ERROR",err)
 
 })
 
-/*
-START SCHEDULERS
-*/
-
 startSchedulers()
 
 }catch(err){
@@ -356,7 +308,6 @@ startSchedulers()
 logger.error("BOT_START_ERROR",err)
 
 console.log("♻️ Restarting bot in 6 seconds...")
-
 setTimeout(startBot,6000)
 
 }
@@ -365,7 +316,7 @@ setTimeout(startBot,6000)
 
 /*
 =========================
-GRACEFUL SHUTDOWN
+SHUTDOWN
 =========================
 */
 
@@ -374,17 +325,9 @@ function shutdown(signal){
 console.log(`\n🛑 ${signal} received. Shutting down bot...`)
 
 try{
-
-if(sock){
-
-sock.end()
-
-}
-
+if(sock) sock.end()
 }catch(e){
-
 console.error("SOCKET_CLOSE_ERROR",e)
-
 }
 
 process.exit()
