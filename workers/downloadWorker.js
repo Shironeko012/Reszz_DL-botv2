@@ -1,6 +1,5 @@
 /**
- * Download Worker
- * Execute download tasks using downloader engine (Optimized)
+ * Download Worker (Production Optimized)
  */
 
 const fs = require("fs")
@@ -12,129 +11,128 @@ const retryEngine = require("../lib/retryEngine")
 const MAX_TIMEOUT = 180000
 
 /*
-Safe task executor with timeout
+Safe executor with timeout + cancellation
 */
-
-async function execute(task){
+async function execute(task, timeout = MAX_TIMEOUT){
 
 if(typeof task !== "function"){
 throw new Error("Worker task is not a function")
 }
 
-return Promise.race([
+let finished = false
 
-task(),
+return new Promise((resolve,reject)=>{
 
-new Promise((_,reject)=>
-setTimeout(()=>{
+const timer = setTimeout(()=>{
+
+if(finished) return
+
+logger.error("WORKER_TIMEOUT")
+
+finished = true
+
 reject(new Error("Worker timeout"))
-},MAX_TIMEOUT)
+
+},timeout)
+
+task()
+.then(res=>{
+
+if(finished) return
+
+finished = true
+
+clearTimeout(timer)
+
+resolve(res)
+
+})
+.catch(err=>{
+
+if(finished) return
+
+finished = true
+
+clearTimeout(timer)
+
+reject(err)
+
+})
+
+})
+
+}
+
+/*
+VALIDATE RESULT
+*/
+function validateResult(result,type){
+
+if(!result || !result.file){
+throw new Error(`Invalid ${type} result`)
+}
+
+if(typeof result.file !== "string"){
+throw new Error(`${type} file path invalid`)
+}
+
+if(!fs.existsSync(result.file)){
+throw new Error(`${type} file missing`)
+}
+
+}
+
+/*
+UNIFIED DOWNLOAD HANDLER
+*/
+async function runDownload(type, url, handler){
+
+try{
+
+logger.info("WORKER_START",{type,url})
+
+const result = await retryEngine.retry(
+() => execute(()=>handler(url)),
+{
+retries:4
+}
 )
 
-])
+validateResult(result,type)
+
+logger.info("WORKER_SUCCESS",{
+type,
+file:result.file
+})
+
+return result
+
+}catch(error){
+
+logger.error("WORKER_FAILED",{
+type,
+url,
+error:error?.message || error
+})
+
+throw error
+
+}
 
 }
 
 /*
-VIDEO DOWNLOAD
+VIDEO
 */
-
 async function downloadVideo(url){
-
-try{
-
-logger.info("WORKER_VIDEO_START",{url})
-
-const result = await retryEngine.retry(async()=>{
-
-return await execute(()=>downloader.downloadVideo(url))
-
-})
-
-if(!result || !result.file){
-
-throw new Error("Invalid download result")
-
-}
-
-if(typeof result.file !== "string"){
-
-throw new Error("Result file path invalid")
-
-}
-
-if(!fs.existsSync(result.file)){
-
-throw new Error("Downloaded video file missing")
-
-}
-
-logger.info("WORKER_VIDEO_SUCCESS",{file:result.file})
-
-return result
-
-}catch(error){
-
-logger.error("WORKER_VIDEO_DOWNLOAD_FAILED",{
-url,
-error:error?.message || error
-})
-
-throw error
-
-}
-
+return runDownload("video",url,downloader.downloadVideo)
 }
 
 /*
-MP3 DOWNLOAD
+MP3
 */
-
 async function downloadMP3(url){
-
-try{
-
-logger.info("WORKER_AUDIO_START",{url})
-
-const result = await retryEngine.retry(async()=>{
-
-return await execute(()=>downloader.downloadAudio(url))
-
-})
-
-if(!result || !result.file){
-
-throw new Error("Invalid audio result")
-
-}
-
-if(typeof result.file !== "string"){
-
-throw new Error("Result audio path invalid")
-
-}
-
-if(!fs.existsSync(result.file)){
-
-throw new Error("Downloaded audio file missing")
-
-}
-
-logger.info("WORKER_AUDIO_SUCCESS",{file:result.file})
-
-return result
-
-}catch(error){
-
-logger.error("WORKER_MP3_DOWNLOAD_FAILED",{
-url,
-error:error?.message || error
-})
-
-throw error
-
-}
-
+return runDownload("audio",url,downloader.downloadAudio)
 }
 
 module.exports = {
